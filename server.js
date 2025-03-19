@@ -1,17 +1,14 @@
 import express from 'express';
-import {createServer} from 'http';
-import path from 'path';
-import {Socket} from 'socket.io';
-import {toBuffer} from 'qrcode';
-import fetch from 'node-fetch';
+import { createServer } from 'http';
+import { toBuffer } from 'qrcode';
+import makeWASocket from '@whiskeysockets/baileys'; // أو أي مكتبة تستخدمها لإنشاء `conn`
 
 function connect(conn, PORT) {
   const app = global.app = express();
-  console.log(app);
   const server = global.server = createServer(app);
   let _qr = 'El código QR es invalido, posiblemente ya se escaneo el código QR.';
 
-  conn.ev.on('connection.update', function appQR({qr}) {
+  conn.ev.on('connection.update', function appQR({ qr }) {
     if (qr) _qr = qr;
   });
 
@@ -21,29 +18,25 @@ function connect(conn, PORT) {
   });
 
   server.listen(PORT, () => {
-    console.log('[ ℹ️ ] La aplicación está escuchando el puerto', PORT, '(ignorar si ya escaneo el código QR)');
-    if (opts['keepalive']) keepAlive();
+    console.log('[ ℹ️ ] La aplicación está escuchando en el puerto', PORT);
   });
 }
 
 function pipeEmit(event, event2, prefix = '') {
   const old = event.emit;
-  event.emit = function(event, ...args) {
+  event.emit = function (event, ...args) {
     old.emit(event, ...args);
     event2.emit(prefix + event, ...args);
   };
   return {
     unpipeEmit() {
       event.emit = old;
-    }};
+    }
+  };
 }
 
-function keepAlive() {
-  const url = `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
-  if (/(\/\/|\.)undefined\./.test(url)) return;
-  setInterval(() => {
-    fetch(url).catch(console.error);
-  }, 5 * 1000 * 60);
-}
+// إنشاء اتصال WhatsApp
+const conn = makeWASocket({ /* خيارات الاتصال */ });
+const PORT = process.env.PORT || 6000; // استخدم المنفذ المقدم من Heroku أو 3000 محليًا
 
-export default connect;
+connect(conn, PORT);
