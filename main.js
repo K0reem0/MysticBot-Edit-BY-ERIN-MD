@@ -15,6 +15,7 @@ import syntaxerror from 'syntax-error';
 import {format} from 'util';
 import pino from 'pino';
 import Pino from 'pino';
+import { MongoDB } from './src/libraries/mongoDB.js'
 import {Boom} from '@hapi/boom';
 import {makeWASocket, protoType, serialize} from './src/libraries/simple.js';
 import {Low, JSONFile} from 'lowdb';
@@ -24,6 +25,9 @@ import readline from 'readline';
 import NodeCache from 'node-cache';
 const {chain} = lodash;
 const PORT = process.env.PORT || process.env.SERVER_PORT || 3000;
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+const GITHUB_USERNAME = process.env.GITHUB_USERNAME;
+const GITHUB_REPO = process.env.GITHUB_REPO;
 let stopped = 'close';  
 protoType();
 serialize();
@@ -45,18 +49,28 @@ global.videoListXXX = [];
 const __dirname = global.__dirname(import.meta.url);
 global.opts = new Object(yargs(process.argv.slice(2)).exitProcess(false).parse());
 global.prefix = new RegExp('^[' + (opts['prefix'] || '*/i!#$%+£¢€¥^°=¶∆×÷π√✓©®:;?&.\\-.@').replace(/[|\\{}()[\]^$+*?.\-\^]/g, '\\$&') + ']');
-global.db = new Low(/https?:\/\//.test(opts['db'] || '') ? new cloudDBAdapter(opts['db']) : new JSONFile(`${opts._[0] ? opts._[0] + '_' : ''}database.json`));
+global.opts['db'] = process.env.DATABASE_URL;
 
+global.db = new Low(
+  /https?:\/\//.test(opts['db'] || '')
+    ? new CloudDBAdapter(opts['db'])
+    : /mongodb(\+srv)?:\/\//i.test(opts['db'])
+      ? new MongoDB(opts['db'])
+      : new JSONFile(`${opts._[0] ? opts._[0] + '_' : ''}database.json`)
+);
+
+global.DATABASE = global.db;
 
 global.loadDatabase = async function loadDatabase() {
-  if (global.db.READ) {
-    return new Promise((resolve) => setInterval(async function() {
-      if (!global.db.READ) {
-        clearInterval(this);
-        resolve(global.db.data == null ? global.loadDatabase() : global.db.data);
-      }
-    }, 1 * 1000));
-  }
+  if (global.db.READ)
+    return new Promise(resolve => {
+      const interval = setInterval(async function () {
+        if (!global.db.READ) {
+          clearInterval(interval);
+          resolve(global.db.data == null ? global.loadDatabase() : global.db.data);
+        }
+      }, 1 * 1000);
+    });
   if (global.db.data !== null) return;
   global.db.READ = true;
   await global.db.read().catch(console.error);
